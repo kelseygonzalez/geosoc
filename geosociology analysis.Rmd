@@ -1,0 +1,611 @@
+---
+title: "GeoSociology Project Tables"
+author: "Albert J. Bergesen and Kelsey E. Gonzalez"
+date: "January 20, 2020"
+header-includes:
+   - \usepackage{dcolumn}
+output:
+  pdf_document: default
+  html_document: default
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include = FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(tidyverse)
+library(kableExtra) #printing normal tables 
+library(stargazer) #printing regression tables 
+library(rworldmap)
+```
+
+```{r}
+df <- read_csv("data_output/countries_merged.csv") %>% drop_na() #drop NAs
+
+```
+
+
+# Descriptive Statistics
+```{r}
+
+df %>% 
+  select(p_combwater, p_mount_tot, country, abortion2) %>% 
+  mutate(abortion2 = ifelse(abortion2 == "Pro_Choice", 1, 0)) %>% 
+  group_by(country) %>% 
+  summarize(Water = first(p_combwater),
+            Mountains = first(p_mount_tot),
+            Neither = 1 - Water - Mountains,
+            Neither = ifelse(Neither < 0, 0, Neither),
+            abortion2 = mean(abortion2))  %>% 
+  pivot_longer(-c(country, abortion2), names_to = "type", values_to = "percent") %>% 
+  ggplot(aes(x = reorder(country, abortion2), y = percent, fill = type)) +
+    geom_col()+
+    theme(axis.text.x = element_text(size=8, angle=90, vjust=0.5, hjust=1)) +
+    ggtitle("Figure 1: Border Distributions by Country sorted by liberality",
+            subtitle = "Sorted from least accepting of abortion to most") +
+    xlab("") + ylab("Percent of Border") + 
+  scale_fill_manual(values=c("#397741", "#E69F00", "#56B4E9", "#FFFFFF"))
+
+```
+
+```{r}
+
+countries <- df %>% 
+  group_by(country) %>% 
+  summarize(water = first(p_combwater),
+            mountains = first(p_mount_tot)) 
+         
+# ten_countries <- countries %>% 
+#   select(country) %>% 
+#   sample_n(.,14) 
+# ten_countries <- rbind(ten_countries, "Switzerland", "Denmark", "Hungary")
+ten_countries <- c("Austria", "Bulgaria", "Romania", "Sweden", "Norway",
+                   "Russia", "Estonia", "Latvia", "Ireland", "Switzerland",
+                   "Denmark", "Hungary", "Slovak Republic", "Croatia")
+
+      
+countries <- countries %>% 
+    mutate(label = ifelse(country %in% ten_countries, 
+                        as.character(country), 
+                        ""))
+
+  ggplot(countries,
+         aes(x = water, y = mountains)) +
+    geom_point() +
+    ggrepel::geom_text_repel(aes(label = label),
+                  size = 4.5,
+                  point.padding = .2,
+                  box.padding = .3,
+                  force = 1,
+                  min.segment.length = 0)+
+    ggtitle("Figure 2: Border Distributions by Country") +
+    xlab("Percentage of Border that is Water") + 
+    ylab("Percentage of Border that is Mountainous")
+  
+  
+```
+
+```{r, results='hide'}
+
+
+malDF <- df %>% 
+  mutate(abortion = ifelse(abortion2 == "Pro_Choice", 1, 0),
+         gay_marriage = ifelse(gay_marriage2 == "Pro_Marriage_Equality", 1, 0),
+         jews_neighbor = ifelse(jews_neighbor == "Accepts_Jews", 1, 0),
+         muslims_neighbor = ifelse(muslims_neighbor == "Accepts_Muslims",1, 0)) %>% 
+  group_by(country) %>% 
+  summarize(abortion = mean(abortion),
+            gay_marriage = mean(gay_marriage),
+            jews_neighbor = mean(jews_neighbor),
+            muslims_neighbor = mean(muslims_neighbor)) %>% 
+  pivot_longer(-country, names_to = "variable", values_to = "percent") 
+
+abortion <- malDF %>% 
+  filter(variable == "abortion") %>% 
+  rename(`Percent Pro-Life` = percent)
+
+gay_marriage <- malDF %>% 
+  filter(variable == "gay_marriage")  %>% 
+  rename(`Percent Pro Marriage-Equality` = percent)
+
+jews_neighbor <- malDF %>% 
+  filter(variable == "jews_neighbor")  %>% 
+  rename(`Percent Accepts Jewish Neighbors` = percent)
+
+muslims_neighbor <- malDF %>% 
+  filter(variable == "muslims_neighbor")  %>% 
+  rename(`Percent Accepts Muslim Neighbors` = percent)
+
+abortion <- joinCountryData2Map(abortion, joinCode = "NAME",
+                              nameJoinColumn = "country")
+
+gay_marriage <- joinCountryData2Map(gay_marriage, joinCode = "NAME",
+                                nameJoinColumn = "country")
+
+jews_neighbor <- joinCountryData2Map(jews_neighbor, joinCode = "NAME",
+                                nameJoinColumn = "country")
+
+muslims_neighbor <- joinCountryData2Map(muslims_neighbor, joinCode = "NAME",
+                                nameJoinColumn = "country")
+```
+
+```{r}
+## Specify the colourPalette argument
+abortion <- mapCountryData(abortion, 
+                      nameColumnToPlot="Percent Pro-Life", 
+                      catMethod = "pretty",
+                      missingCountryCol = gray(.8), 
+                      xlim = c(-20, 59),
+                      ylim = c(35, 71),
+                      asp = 1) 
+gay_marriage <- mapCountryData(gay_marriage, 
+                           nameColumnToPlot="Percent Pro Marriage-Equality", 
+                           catMethod = "pretty",
+                           missingCountryCol = gray(.8), 
+                           xlim = c(-20, 59),
+                           ylim = c(35, 71),
+                           asp = 1) 
+jews_neighbor <- mapCountryData(jews_neighbor, 
+                           nameColumnToPlot="Percent Accepts Jewish Neighbors", 
+                           catMethod = "pretty",
+                           missingCountryCol = gray(.8), 
+                           xlim = c(-20, 59),
+                           ylim = c(35, 71),
+                           asp = 1) 
+muslims_neighbor <- mapCountryData(muslims_neighbor, 
+                           nameColumnToPlot="Percent Accepts Muslim Neighbors", 
+                           catMethod = "pretty",
+                           missingCountryCol = gray(.8), 
+                           xlim = c(-20, 59),
+                           ylim = c(35, 71),
+                           asp = 1) 
+```
+
+
+
+```{r}
+props <- df %>% 
+  mutate(high = ifelse(country == "Switzerland", country, NA),
+         high = ifelse(country == "Denmark", country, high),
+         high = ifelse(country == "Hungary", country, high)) 
+
+
+proportions_all <- as.data.frame(rbind(as.data.frame(prop.table(table(props$jews_neighbor))),
+                                       as.data.frame(prop.table(table(props$muslims_neighbor))),
+                                       as.data.frame(prop.table(table(props$religious))),
+                                       as.data.frame(prop.table(table(props$gay_marriage2))),
+                                       as.data.frame(prop.table(table(props$abortion2)))))
+
+colnames(proportions_all) <- c("Variable","Overall")
+
+proportions <- as.data.frame(rbind(prop.table(table(props$jews_neighbor,props$high), 2),
+                                   prop.table(table(props$muslims_neighbor,props$high), 2),
+                                   prop.table(table(props$religious,props$high), 2),
+                                   prop.table(table(props$gay_marriage2,props$high), 2),
+                                   prop.table(table(props$abortion2,props$high), 2)))
+  
+total_proportions_table <- cbind(proportions_all,proportions)
+```
+
+
+
+
+```{r eval=FALSE}
+total_proportions_table %>% 
+  select(-Variable) %>% 
+  kable("latex", round(digits = 3)) %>% 
+  kable_styling(position = "center") %>% 
+  add_header_above(c("", 
+                     "All Countries" = 1, 
+                     "High Water" = 1, 
+                     "Low Water, \n Low Mountains" = 1, 
+                     "High Mountains" = 1)) %>% 
+  add_header_above(c("", 
+                     "All Countries" = 1, 
+                     "Example Countries" = 3))
+
+```
+\begin{table}[H]
+\centering
+\caption{Attitudinal Responses Over Total Group and Selected Countries}
+\begin{tabular}{l|r|r|r|r}
+\hline
+\multicolumn{1}{c|}{} & \multicolumn{1}{c|}{All Countries} & \multicolumn{3}{c}{Example Countries} \\
+\cline{2-2} \cline{3-5}
+\multicolumn{1}{c|}{} & \multicolumn{1}{c|}{} & \multicolumn{1}{c|}{High Water} & \multicolumn{1}{c|}{\makecell[c]{Low Water, \\ Low Mountains}} & \multicolumn{1}{c}{High Mountains} \\
+\cline{2-2} \cline{3-3} \cline{4-4} \cline{5-5}
+  & Overall & Denmark & Hungary & Switzerland\\
+\hline
+Accepts Jews as Neighbors & 0.872 & 0.984 & 0.829 & 0.927\\
+Wouldn't Accept Jews as Neighbors & 0.128 & 0.016 & 0.171 & 0.073\\
+\hline
+Accepts Muslims as Neighbors & 0.731 & 0.927 & 0.421 & 0.868\\
+Wouldn't Muslims Jews as Neighbors & 0.269 & 0.073 & 0.579 & 0.132\\
+\hline
+Not Religious & 0.476 & 0.483 & 0.610 & 0.543\\
+Religious & 0.524 & 0.517 & 0.390 & 0.457\\
+\hline
+Against Marriage Equality & 0.538 & 0.089 & 0.700 & 0.177\\
+Pro Marriage Equality & 0.462 & 0.911 & 0.300 & 0.823\\
+\hline
+Pro Choice (Abortion) & 0.669 & 0.948 & 0.739 & 0.820\\
+Pro Life (Abortion) & 0.331 & 0.052 & 0.261 & 0.180\\
+\hline
+\hline
+N & \multicolumn{4}{l}{44,708}                   \\
+\end{tabular}
+\end{table}
+
+
+
+```{r eval=FALSE}
+df %>% 
+  group_by(country) %>% 
+  summarize(`Internet Users` = mean(interusers),
+            `Percent \n Urban Residents` = 0.01*mean(perc_urban),
+            `Percent Entrolled \n in Tertiary Educ` = 0.01*mean(tert),
+            `GDP Per Capita` = mean(GDP),
+            N = n()) %>% 
+  kable("latex", 
+        round(digits = 2),
+        escape = FALSE,
+        col.names = c("Country",
+                      "Internet Users",
+                      "Urban Residents",
+                      "Enrolled in Tertiary Educ",
+                      "GDP Per Capita",
+                      "N")) %>% 
+  kable_styling(position = "center") 
+```
+\begin{table}[H]
+\centering
+\caption{Country-Level Variables by Country}
+
+\begin{tabular}{l|r|r|r|r|r}
+\hline
+Country & Internet Users & \% Urban Residents &  \makecell{\% Enrolled in \\ Tertiary Educ} & GDP Per Capita & Count \\
+\hline
+Armenia & 0.70 & 0.63 & 0.52 & 12433.09 & 1348\\
+\hline
+Austria & 0.88 & 0.58 & 0.86 & 455736.58 & 1548\\
+\hline
+Belarus & 0.74 & 0.79 & 0.87 & 59662.50 & 927\\
+\hline
+Belgium & 0.88 & 0.98 & 0.76 & 531766.94 & 1299\\
+\hline
+Bosnia & 0.69 & 0.48 & 0.23 & 19781.78 & 672\\
+\hline
+Bulgaria & 0.63 & 0.75 & 0.71 & 65132.95 & 1214\\
+\hline
+Croatia & 0.67 & 0.57 & 0.67 & 60805.66 & 1388\\
+\hline
+Czech Republic & 0.79 & 0.74 & 0.64 & 244105.22 & 1189\\
+\hline
+Denmark & 0.97 & 0.88 & 0.81 & 351299.59 & 1360\\
+\hline
+Estonia & 0.88 & 0.69 & 0.71 & 30284.89 & 1283\\
+\hline
+Finland & 0.87 & 0.85 & 0.87 & 275683.14 & 1243\\
+\hline
+France & 0.81 & 0.80 & 0.64 & 2777535.24 & 1541\\
+\hline
+Georgia & 0.60 & 0.59 & 0.58 & 16209.82 & 1196\\
+\hline
+Germany & 0.84 & 0.77 & 0.68 & 3996759.29 & 1898\\
+\hline
+Greece & 0.70 & 0.79 & 1.26 & 218031.84 & 1241\\
+\hline
+Hungary & 0.77 & 0.71 & 0.48 & 155703.07 & 987\\
+\hline
+Ireland & 0.85 & 0.63 & 0.78 & 375902.68 & 1239\\
+\hline
+Italy & 0.61 & 0.70 & 0.63 & 2073901.99 & 1518\\
+\hline
+Kazakhstan & 0.76 & 0.57 & 0.53 & 170538.87 & 476\\
+\hline
+Latvia & 0.81 & 0.68 & 0.88 & 34849.08 & 1116\\
+\hline
+Lithuania & 0.78 & 0.68 & 0.71 & 53251.37 & 1232\\
+\hline
+Moldova & 0.76 & 0.43 & 0.41 & 11309.08 & 1568\\
+\hline
+Netherlands & 0.93 & 0.91 & 0.80 & 912872.33 & 1349\\
+\hline
+Norway & 0.97 & 0.82 & 0.82 & 434750.94 & 1259\\
+\hline
+Poland & 0.76 & 0.60 & 0.67 & 585782.87 & 1097\\
+\hline
+Portugal & 0.74 & 0.65 & 0.63 & 237978.94 & 1209\\
+\hline
+Romania & 0.64 & 0.54 & 0.48 & 239552.52 & 1202\\
+\hline
+Russia & 0.76 & 0.74 & 0.82 & 1657553.77 & 1336\\
+\hline
+Serbia & 0.70 & 0.56 & 0.66 & 50508.37 & 1342\\
+\hline
+Slovak Republic & 0.82 & 0.54 & 0.48 & 106472.19 & 1188\\
+\hline
+Spain & 0.85 & 0.80 & 0.91 & 1426189.14 & 1215\\
+\hline
+Sweden & 0.96 & 0.87 & 0.64 & 551031.68 & 1337\\
+\hline
+Switzerland & 0.94 & 0.74 & 0.58 & 705501.30 & 1419\\
+\hline
+Ukraine & 0.57 & 0.69 & 0.83 & 130832.37 & 1607\\
+\hline
+United Kingdom & 0.95 & 0.83 & 0.59 & 2825207.95 & 1665\\
+\hline
+\end{tabular}
+\end{table}
+
+
+
+
+
+
+
+
+
+\pagebreak
+ 
+# Logistic Regression Results
+```{r, results = "hide"}
+reg <- df %>% 
+  mutate(`Pro Abortion` = relevel(as.factor(abortion2), 
+                                  ref = "Pro_Life"),
+         
+         `Marriage Equality` = relevel(as.factor(gay_marriage2), 
+                                       ref = "Against_Marriage_Equality"),
+         
+         `Ok with Jewish Neighbor` = relevel(as.factor(jews_neighbor),
+                                             ref = "Rejects_Jews"),
+
+         `Ok with Muslim Neighbor` = relevel(as.factor(muslims_neighbor),
+                                             ref = "Rejects_Muslims"),
+         
+         `Respondent is Religious` = relevel(as.factor(religious),
+                                             ref = "Not_Religious")) %>% 
+  rename(`Water Border` = p_combwater,
+         `Mountainous Border` = p_mount_tot,
+         `Percentage Internet Users` = interusers,
+         `Percentage Urban Residents` = perc_urban,
+         `Logged GDP` = l_GDP,
+         `Percentage Tertiary Educ`= tert)
+
+model1  <- glm(`Pro Abortion` ~ `Water Border` + 
+                  `Mountainous Border` + 
+                  `Percentage Internet Users` + 
+                  `Percentage Urban Residents` + 
+                  `Percentage Tertiary Educ` + 
+                  `Logged GDP` + 
+                  `Respondent is Religious`,
+                data = reg, 
+                family = "binomial"(link="logit"))
+model2  <- glm(`Marriage Equality` ~ `Water Border` + 
+                  `Mountainous Border` + 
+                  `Percentage Internet Users` + 
+                  `Percentage Urban Residents` + 
+                  `Percentage Tertiary Educ` + 
+                  `Logged GDP` + 
+                  `Respondent is Religious`,
+                data = reg, 
+                family = "binomial"(link="logit"))
+model3  <- glm(`Ok with Jewish Neighbor` ~ `Water Border` + 
+                  `Mountainous Border` + 
+                  `Percentage Internet Users` + 
+                  `Percentage Urban Residents` + 
+                  `Percentage Tertiary Educ` + 
+                  `Logged GDP` + 
+                  `Respondent is Religious`,
+                data = reg, 
+                family = "binomial"(link="logit"))
+model4  <- glm(`Ok with Muslim Neighbor` ~ `Water Border` + 
+                  `Mountainous Border` + 
+                  `Percentage Internet Users` + 
+                  `Percentage Urban Residents` + 
+                  `Percentage Tertiary Educ` + 
+                  `Logged GDP` + 
+                  `Respondent is Religious`,
+                data = reg, 
+                family = "binomial"(link="logit"))
+
+# stargazer(model1, model2, model3, model4, 
+          # title="Regression Results", align=TRUE)
+
+write.csv(reg, file = "reg_for_modeling.csv")
+```
+
+\begin{table}[H] 
+\centering 
+\caption{Full Regression Results of Four Dependent Variables} 
+\label{} 
+\begin{tabular}{@{\extracolsep{5pt}}lD{.}{.}{-3} D{.}{.}{-3} D{.}{.}{-3} D{.}{.}{-3} } 
+\\[-1.8ex]\hline 
+\hline \\[-1.8ex] 
+ & \multicolumn{4}{c}{\textit{Dependent variable:}} \\ 
+\cline{2-5} 
+\\[-1.8ex] & 
+\multicolumn{1}{c}{Pro Abortion} & 
+\multicolumn{1}{c}{\makecell[c]{Marriage Equality}} & 
+\multicolumn{1}{c}{\makecell[c]{Ok with \\ Jewish Neighbor}} & 
+\multicolumn{1}{c}{\makecell[c]{Ok with \\ Muslim Neighbor}} \\ 
+\\[-1.8ex] & \multicolumn{1}{c}{(1)} & \multicolumn{1}{c}{(2)} & \multicolumn{1}{c}{(3)} & \multicolumn{1}{c}{(4)}\\ 
+
+ &  &  &  &  \\ 
+\textit{Independent Variables} &  &  &  &  \\ 
+\hline
+ Water Border & 1.449^{***} & 1.951^{***} & 3.122 ^{***} & 4.434^{***} \\ 
+  & (0.049) & (0.048) & (0.068) & (0.051) \\ 
+  & & & & \\ 
+ Mountainous Border & 2.463^{***} & 2.905 ^{***} & 5.585^{***} & 11.675^{***} \\ 
+  & (0.062) & (0.068) & (0.088) & (0.068) \\ 
+  & & & & \\ 
+  
+ &  &  &  &  \\ 
+\textit{Country-Level Controls} &  &  &  &  \\ 
+\hline
+
+ Percentage Internet Users & 29.114^{***} & 325.856^{***} & 22.494^{***} & 4.054^{***} \\ 
+  & (0.118) & (0.131) & (0.161) & (0.130) \\ 
+  & & & & \\ 
+ Percentage Urban Residents & 1.044^{***} & 1.022^{***} & 1.027^{***} & 1.013^{***} \\ 
+  & (0.001) & (0.002) & (0.002) & (0.001) \\ 
+  & & & & \\ 
+ Percentage Tertiary Educ & 0.986^{***} & 0.991^{***} & 0.990^{***} & 0.993^{***} \\ 
+  & (0.001) & (0.001) & (0.001) & (0.001) \\ 
+  & & & & \\ 
+ Logged GDP` & 1.080^{***} & 1.613^{***} & 0.946^{***} & 1.122^{***} \\ 
+  & (0.010) & (0.011) & (0.013) & (0.010) \\ 
+  & & & & \\ 
+
+ &  &  &  &  \\ 
+\textit{Individual-Level Controls} &  &  &  &  \\ 
+\hline 
+
+ Respondent is Religious & 0.529^{***} & 0.581^{***} & 1.081^{***} & 1.030^{***} \\ 
+  & (0.023) & (0.024) & (0.031) & (0.024) \\ 
+  & & & & \\ 
+ Constant & 0.010^{***} & 0.00001^{***} & 0.210^{***} & 0.063^{***} \\ 
+  & (0.116) & (0.135) & (0.156) & (0.122) \\ 
+  & & & & \\ 
+\hline \\[-1.8ex] 
+Observations & \multicolumn{1}{c}{44,708} & \multicolumn{1}{c}{44,708} & \multicolumn{1}{c}{44,708} & \multicolumn{1}{c}{44,708} \\ 
+
+Log Likelihood & \multicolumn{1}{c}{-23,889.130} & \multicolumn{1}{c}{-21,853.460} & \multicolumn{1}{c}{-15,727.390} & \multicolumn{1}{c}{-22,935.600} \\ 
+
+Akaike Inf. Crit. & \multicolumn{1}{c}{47,794.250} & \multicolumn{1}{c}{43,722.920} & \multicolumn{1}{c}{31,470.780} & \multicolumn{1}{c}{45,887.190} \\ 
+
+\hline 
+\hline \\[-1.8ex] 
+\multicolumn{2}{l}{\makecell[c]{Note: Standard Errors In Parentheses; \\ Coeffients as Odds-Ratios}}  &
+\multicolumn{3}{r}{$^{*}$p$<$0.1; $^{**}$p$<$0.05; $^{***}$p$<$0.01} \\ 
+\end{tabular} 
+\end{table} 
+
+
+
+
+
+\pagebreak
+
+# Appendix
+
+
+```{r , results='hide'}
+model1a  <- glm(`Pro Abortion` ~ `Water Border` + 
+                  `Percentage Internet Users` + 
+                  `Percentage Urban Residents` + 
+                  `Percentage Tertiary Educ` + 
+                  `Logged GDP` + 
+                  `Respondent is Religious`,
+                data = reg, 
+                family = "binomial"(link="logit"))
+model1b  <- glm(`Pro Abortion` ~  
+                  `Mountainous Border` + 
+                  `Percentage Internet Users` + 
+                  `Percentage Urban Residents` + 
+                  `Percentage Tertiary Educ` + 
+                  `Logged GDP` + 
+                  `Respondent is Religious`,
+                data = reg, 
+                family = "binomial"(link="logit"))
+```
+
+```{r results='asis'}
+stargazer(model1a, model1b, model1,
+          title="Regression Results for Abortion Attitudes",
+          align=TRUE,
+          apply.coef = exp,
+          notes = "Standard Errors In Parentheses; \\ Coeffients as Odds-Ratios",
+          notes.append = TRUE)
+```
+
+
+
+```{r}
+model2a  <- glm(`Marriage Equality` ~ `Water Border` + 
+                  `Percentage Internet Users` + 
+                  `Percentage Urban Residents` + 
+                  `Percentage Tertiary Educ` + 
+                  `Logged GDP` + 
+                  `Respondent is Religious`,
+                data = reg, 
+                family = "binomial"(link="logit"))
+model2b  <- glm(`Marriage Equality` ~ 
+                  `Mountainous Border` + 
+                  `Percentage Internet Users` + 
+                  `Percentage Urban Residents` + 
+                  `Percentage Tertiary Educ` + 
+                  `Logged GDP` + 
+                  `Respondent is Religious`,
+                data = reg, 
+                family = "binomial"(link="logit"))
+```
+
+```{r results='asis'}
+stargazer(model2a, model2b, model2,
+          title="Regression Results for Marriage Equality Attitudes", 
+          align=TRUE,
+          apply.coef = exp,
+          notes = "Standard Errors In Parentheses; \\ Coeffients as Odds-Ratios",
+          notes.append = TRUE)
+```
+
+```{r}
+model3a  <- glm(`Ok with Jewish Neighbor` ~ `Water Border` + 
+                  `Percentage Internet Users` + 
+                  `Percentage Urban Residents` + 
+                  `Percentage Tertiary Educ` + 
+                  `Logged GDP` + 
+                  `Respondent is Religious`,
+                data = reg, 
+                family = "binomial"(link="logit"))
+model3b  <- glm(`Ok with Jewish Neighbor` ~ 
+                  `Mountainous Border` + 
+                  `Percentage Internet Users` + 
+                  `Percentage Urban Residents` + 
+                  `Percentage Tertiary Educ` + 
+                  `Logged GDP` + 
+                  `Respondent is Religious`,
+                data = reg, 
+                family = "binomial"(link="logit"))
+```
+
+```{r results='asis'}
+
+stargazer(model3a, model3b, model3,
+          title="Regression Results for Jewish Neighbor Acceptance  Attitudes", 
+          align=TRUE,
+          apply.coef = exp,
+          notes = "Standard Errors In Parentheses; \\ Coeffients as Odds-Ratios",
+          notes.append = TRUE)                
+```                
+                
+```{r}                
+model4a  <- glm(`Ok with Muslim Neighbor` ~ `Water Border` + 
+                  `Percentage Internet Users` + 
+                  `Percentage Urban Residents` + 
+                  `Percentage Tertiary Educ` + 
+                  `Logged GDP` + 
+                  `Respondent is Religious`,
+                data = reg, 
+                family = "binomial"(link="logit"))
+model4b  <- glm(`Ok with Muslim Neighbor` ~ 
+                  `Mountainous Border` + 
+                  `Percentage Internet Users` + 
+                  `Percentage Urban Residents` + 
+                  `Percentage Tertiary Educ` + 
+                  `Logged GDP` + 
+                  `Respondent is Religious`,
+                data = reg, 
+                family = "binomial"(link="logit"))
+```
+
+```{r results='asis'}
+stargazer(model4a, model4b, model4,
+          title="Regression Results for Muslim Neighbor Acceptance Attitudes", 
+          align=TRUE,
+          apply.coef = exp,
+          notes = "Standard Errors In Parentheses; \\ Coeffients as Odds-Ratios",
+          notes.append = TRUE)    
+```

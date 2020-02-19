@@ -1,0 +1,183 @@
+---
+title: "GeoSociology Data Wrangling"
+author: "Kelsey E. Gonzalez"
+date: "January 15, 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r}
+library(tidyverse)
+library(skimr)
+library(forcats)
+
+borders <- read_csv("data_orig/borders.csv")
+eastern <- read_csv("data_orig/eastern.csv")
+western <- read_csv("data_orig/western.csv")
+```
+
+fix Italy's weird border number (adding up to a little over one)
+```{r}
+borders <- borders %>% 
+  mutate(p_mount_land = ifelse(country == "Italy", 1, p_mount_land),
+         p_mount_tot = ifelse(country == "Italy", (1-p_combwater), p_mount_tot),)
+```
+
+
+clean eastern dataframe by renaming columns and merging muslim and non-muslim religiosity into new variable, religious
+```{r}
+eastern <- 
+  eastern %>% 
+  rename(jews_neighbor = Q59b,
+         muslims_neighbor  = Q60b,
+         catholics_neighbor = Q61b,
+         orthodox_neighbor = Q62B,
+         id = CASEID,
+         gay_marriage = Q10,
+         abortion = Q11,
+         country = COUNTRY,
+         religious_c = Q41,
+         religious_m = Q37) %>% 
+    mutate(religious_c2 = as.factor(religious_c),
+         religious_m2 = as.factor(religious_m),
+         religious_c2 = fct_recode(religious_c2, 
+                                   Religious = "A few times a year",       
+                                   Religious = "More than once a week",   
+                                   Religious = "Once a week",              
+                                   Religious = "Once or twice a month",   
+                                   Not_Religious = "Seldom",
+                                   Not_Religious = "Never",                    
+                                   na = "Don't know (DO NOT READ)", 
+                                   na = "Refused (DO NOT READ)"),
+         religious_m2 = fct_recode(religious_m2, 
+                                   Religious = "A few times a year especially for Eid",       
+                                   Religious = "More than once a week",   
+                                   Religious = "Once a week for Friday Prayer",              
+                                   Religious = "Once or twice a month",   
+                                   Not_Religious = "Seldom",
+                                   Not_Religious = "Never",                    
+                                   na = "Don't know (DO NOT READ)", 
+                                   na = "Refused (DO NOT READ)"),
+         religious_c2 = as.character(religious_c2),
+         religious_m2 = as.character(religious_m2)) %>% 
+    mutate(religious = ifelse(is.na(religious_c2), religious_m2, religious_c2)) %>% 
+    mutate(religious = ifelse(religious == "na",NA, religious)) %>%
+    select(-c(religious_c2, religious_c, religious_m, religious_m2))
+```
+
+clean western dataframe by renaming columns and merging muslim and non-muslim religiosity into new variable, religious
+```{r}
+western <-
+  western %>% 
+  rename(jews_neighbor = Q36b,
+         muslims_neighbor  = Q37b,
+         catholics_neighbor = Q38b,
+         protestants_neighbor = Q39b,
+         id = QRID,
+         gay_marriage = Q5,
+         abortion = Q6,
+         religious_c = Q15a,
+         religious_m = Q15b) %>% 
+  mutate(religious_c2 = as.factor(religious_c),
+         religious_m2 = as.factor(religious_m),
+         religious_c2 = fct_recode(religious_c2, 
+                                   Religious = "A few times a year",       
+                                   Religious = "More than once a week",   
+                                   Religious = "Once a week",              
+                                   Religious = "Once or twice a month",   
+                                   Not_Religious = "Seldom",
+                                   Not_Religious = "Never",                    
+                                   na = "Don't know (DO NOT READ)", 
+                                   na = "Refused (DO NOT READ)"),
+         religious_m2 = fct_recode(religious_m2, 
+                                   Religious = "A few times a year especially for Eid",       
+                                   Religious = "More than once a week",   
+                                   Religious = "Once a week for Friday Prayer",              
+                                   Religious = "Once or twice a month",   
+                                   Not_Religious = "Seldom",
+                                   Not_Religious = "Never",                    
+                                   na = "Don't know (DO NOT READ)", 
+                                   na = "Refused (DO NOT READ)"),
+         religious_c2 = as.character(religious_c2),
+         religious_m2 = as.character(religious_m2)) %>% 
+    mutate(religious = ifelse(is.na(religious_c2), religious_m2, religious_c2)) %>% 
+    mutate(religious = ifelse(religious == "na",NA, religious)) %>%
+    select(-c(religious_c2, religious_c, religious_m, religious_m2))
+```
+
+append western to eastern in new dataframe, europe. Remove orthodox and protestant columns as they're not consistent across the datasets. 
+```{r}
+europe <- bind_rows(eastern, western) %>% select(-c(orthodox_neighbor, protestants_neighbor))
+```
+
+rename some of the border's country labels to match with the europe df variables, including russia and bosnia.
+```{r}
+borders <- 
+  borders %>% 
+  mutate(country = as.factor(country),
+         country = fct_recode(country, 
+                              Russia = "Russian Federation",
+                              Bosnia = "Bosnia and Herzegovina"),
+         country = as.character(country)) %>% 
+  select(country, 
+         p_combwater,
+         p_mount_tot,
+         p_mount_land,
+         interusers,
+         perc_urban,
+         GDP,
+         l_GDP,
+         tert)
+```
+
+merge europe with borders
+```{r}
+countries_merged <- europe %>% 
+  left_join(borders, by = "country") 
+```
+
+a little more wrangling to clean NAs and collapse variables
+```{r}
+countries_merged <-
+  countries_merged %>% 
+    mutate(jews_neighbor = as.factor(jews_neighbor),
+           jews_neighbor = fct_recode(jews_neighbor,
+                                NULL = "Depends (VOL.)",
+                                NULL = "Don't know (DO NOT READ)",
+                                NULL = "Other / Both / Neither / Depends (DO NOT READ)",
+                                NULL = "Refused (DO NOT READ)",
+                                Accepts_Jews = "Yes",
+                                Rejects_Jews = "No")) %>% 
+    mutate(muslims_neighbor = as.factor(muslims_neighbor),
+           muslims_neighbor = fct_recode(muslims_neighbor,
+                                NULL = "Depends (VOL.)",
+                                NULL = "Don't know (DO NOT READ)",
+                                NULL = "Other / Both / Neither / Depends (DO NOT READ)",
+                                NULL = "Refused (DO NOT READ)",
+                                Accepts_Muslims= "Yes",
+                                Rejects_Muslims= "No")) %>% 
+    mutate(gay_marriage = as.factor(gay_marriage),
+           gay_marriage2 = fct_recode(gay_marriage,
+                                NULL = "Don't know (DO NOT READ)",
+                                NULL = "Refused (DO NOT READ)",
+                                Pro_Marriage_Equality = "Strongly favor",
+                                Pro_Marriage_Equality = "Favor",
+                                Against_Marriage_Equality = "Strongly oppose",
+                                Against_Marriage_Equality = "Oppose",)) %>%
+    mutate(abortion = as.factor(abortion),
+           abortion2 = fct_recode(abortion,
+                                NULL = "Don't know (DO NOT READ)",
+                                NULL = "Refused (DO NOT READ)",
+                                Pro_Choice = "Legal in all cases",
+                                Pro_Choice = "Legal in most cases",
+                                Pro_Life = "Illegal in all cases",
+                                Pro_Life = "Illegal in most cases"),
+           country = as.factor(country)) %>% 
+  select(-c(abortion, gay_marriage, catholics_neighbor))
+write_csv(countries_merged, path = "data_output/countries_merged.csv")  
+```
+
+
